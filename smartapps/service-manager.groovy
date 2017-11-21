@@ -58,7 +58,7 @@ preferences {
     page(name: "stauth_page",        title: "Smartthings Authorization Token", description: "Tap to view or update access token")
     page(name: "stauth_update_page", title: "Smartthings Authorization Token")  
     page(name: "settings_page",      title: "AlarmDecoder Service Manager - General Settings & Automations", ) {  
-            section(title: "General AlarmDecoder Settings") {
+        section(title: "Smart Home Monitor Settings") {
            input(name: "shmIntegration", type: "bool", required: false, defaultValue: true, title: "Integrate with Smart Home Monitor?")
            input(name: "shmChangeSHMStatus", type: "bool", required: false, defaultValue: true, title: "Automatically change Smart Home Monitor status when armed or disarmed?")
            input(name: "defaultSensorToClosed", type: "bool", required: false, defaultValue: true, title: "Default Zone Sensors to closed?")
@@ -113,7 +113,12 @@ preferences {
            paragraph ("Note: With a VirtualRelay you can use a SmartApp to trigger SmartThings devices or routines depending on the state of the relay." ) 
            *****/
            }
-           section("Helpful Links") {
+           section("Other Help Links") {
+           href(name: "InstallHref", title: "AlarmDecoder Installation Documentation",
+                 description: "Go to AlarmDecoder Installation Web Page",
+                 required: false,
+                 image: "https://github.com/cvjanick/alarmdecoder-smartthings/blob/master/README.md",
+                 url: "https://github.com/cvjanick/alarmdecoder-smartthings/blob/master/README.md")
              href(name: "DocumentsHref", title: "AlarmDecoder Documentation",
                  description: "Go to AlarmDecoder Documentation Website",
                  required: false,
@@ -248,7 +253,7 @@ def discover_alarmdecoder() {
 
 def generateAccessToken() {
     state.access_token = createAccessToken()
-    state.endpoint_url = "https://graph.api.smartthings.com/api/smartapps/installations/${app.id}"
+    state.endpoint_url = apiServerUrl() // "https://graph.api.smartthings.com/api/smartapps/installations/${app.id}"
     log.debug "generateAccessToken token=${state.access_token}, url=${state.endpoint_url}"
     def dni = "${state.ip}:${state.port}"
     def ad  = getChildDevice("${state.ip}:${state.port}")
@@ -291,14 +296,6 @@ mappings {
     }
     path("/update_config") {
         action: [
-            GET:  "updateConfigWebService",
-            POST: "updateConfigWebService",
-        ]
-    }
-    path("/update_devices") {
-        action: [
-            GET:  "updateConfigWebService",
-            PUT:  "updateConfigWebService",
             POST: "updateConfigWebService"
         ]
     }
@@ -474,6 +471,7 @@ def locationHandler(evt) {
 
     log.trace "locationHandler: description=${description}"
 
+    // Getting dni updated event description...
     def parsedEvent = parseEventMessage(description)
     parsedEvent << ["hub":hub]
     
@@ -768,16 +766,16 @@ def addAlarmDecoderDevices() {
             if (newDevice!=null) {
                 log.trace("addAlarmDecoderDevices, newDevice=${newDevice}")
                 // Set the device network ID so that hubactions get sent to the device parser.
-                state.ip = newDevice.value.ip
+                state.ip   = newDevice.value.ip
                 state.port = newDevice.value.port
-                state.hub = newDevice.value.hub
-                state.mac = newDevice.value.mac
+                state.hub  = newDevice.value.hub
+                state.mac  = newDevice.value.mac
 
                 // HUB ISSUE: Set URN for the child device
                 // This has shown up as null with the last hub update 19.0017
                 def urn = "unknown"
                 if(newDevice.value.ssdpPath!=null) {
-                   urn = newDevice.value.ssdpPath
+                   urn  = newDevice.value.ssdpPath
                    urn -= "http://"
                  } else 
                      urn = "${state.ip}" + ":" + "${state.port}"
@@ -786,20 +784,30 @@ def addAlarmDecoderDevices() {
                 log.debug"addAlarmDecoderDevices, state.urn=${state.urn}"     
                 
                 // Generate a unique label in case there is more than one to 
+                /**
                 def child_cnt = 0
                 def cd        = getChildDevices()
                 if(cd!=null)
                    child_cnt=cd.size()
                    
                 child_cnt++
-                def ad_label="AlarmDecoder #${child_cnt}"           
+                //def ad_label="AlarmDecoder #${child_cnt}"   
+                **/
+                def ad_label="AlarmDecoder"
+                
                 
                 // Create device and subscribe to it's zone-on/off events.
                 log.debug("addAlarmDecoderDevices, trying to add child device ${ad_label}...")
                 try{
-                     d = addChildDevice("alarmdecoder", "Alarm Decoder Network Appliance", "${state.ip}:${state.port}", newDevice?.value.hub, 
-                                   [name: "${state.ip}:${state.port}", label: ad_label, completedSetup: true, 
-                                   data:[urn: state.urn, mac: state.mac, access_token: state.access_token, endpoint_url: state.endpoint_url]])
+                     d = addChildDevice("alarmdecoder", 
+                                        "Alarm Decoder Network Appliance", 
+                                        "${state.ip}:${state.port}", 
+                                        newDevice?.value.hub, 
+                                        [name: "${state.ip}:${state.port}", 
+                                         label: ad_label, 
+                                         completedSetup: true, 
+                                         data:[urn: state.urn, mac: state.mac, access_token: state.access_token, endpoint_url: state.endpoint_url]
+                                        ])
                     } catch(e) {
                          Alert("Error adding AlarmDecoder Device! Error: ${e}")
                          }
@@ -906,9 +914,18 @@ def addZoneControlDevices(dni, zone_list) {
         {  
             log.trace("Adding VirtualZoneControl device ${child_dni}")
             try{
-                  zone_control = addChildDevice("alarmdecoder", "VirtualZoneControl", 
-                               "${child_dni}", state.hub, [name: "${child_dni}", 
-                               label: "Alarm Zone #${id}", completedSetup: true, data:[ad_dni: dni, mac: state.mac]])
+                  zone_control = addChildDevice("alarmdecoder",         // namespace
+                                                "VirtualZoneControl",   // type 
+                                                "${child_dni}"          // device.networkId
+                                                , state.hub,            // hub id
+                                                [name:          "${child_dni}", 
+                                                label:          "Alarm Zone #${id}", 
+                                                completedSetup: true, 
+                                                isComponent:    false,
+                                                componentName:  "${child_dni}", 
+                                                componentLabel: "Alarm Zone #${id}", 
+                                                data:[ad_dni: dni, mac: state.mac]]
+                                                )
                   created=true
                   log.trace("-- addZoneControl addChildDevice ok.")
                 } catch(e){
@@ -1250,12 +1267,21 @@ def uninstallRelaySensorDevices(dni, relay_list) {
 
 
 private def parseEventMessage(String description) {
-    log.trace "parseEventMessage"
+    //log.trace "parseEventMessage"
+    log.trace "manager parseEventMessage, description=${description}"
     def event = [:]
     def parts = description.split(',')
-
+    
+    log.trace "manager parseEventMessage, parts=${parts}"    
+    // Now getting "C0A80110:1388 updated" events so..
+    if(parts==null)
+      return
+    
     parts.each { part ->
         part = part.trim()
+        log.trace "manager parseEventMessage, part=${part}" 
+        if (part==null)
+            return
         if (part.startsWith('devicetype:')) {
             def valueString = part.split(":")[1].trim()
             event.devicetype = valueString
@@ -1312,7 +1338,7 @@ private def parseEventMessage(String description) {
             if (valueString) {
                 event.body = valueString
             }
-        }
+        } 
     }
 
     log.trace("manager event=${event}")
