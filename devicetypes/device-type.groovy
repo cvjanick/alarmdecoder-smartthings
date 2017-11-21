@@ -44,11 +44,13 @@ preferences {
         input("user_code",  "password", title: "Alarm Code", description: "The user code for the panel", required: false)
         input("panel_type", "enum",     title: "Panel Type", description: "Type of panel", options: ["ADEMCO", "DSC"], defaultValue: "ADEMCO", required: true)
      }
+     /*** Future - perhaps API update to authenticate user/password to get API Key from WebApp
      section(name: "ADWebAppInfo", title: "WebApp Info") {
         input("username",  "text",     title: "WebApp User Name", label: "Enter User Name", 
                                        description: "Enter WebApp User Name", required: false)
         input("password",  "password", title: "WebApp Password",  description: "Enter Password", required: false)
      }
+     ***/
      section(name: "ChildDevicePrefs", title: "Child Device Preferences") {
         input("use_virtual_zones",   "bool", title: "Create Virtual Zone Controls (ADEMCO ONLY)", 
               description: "Create VirtualZoneControls for zones IDs on an emulated expander enabled on AlarmDecoder that can also be set by Smartthings",
@@ -60,25 +62,26 @@ preferences {
                description: "Create Virtual Relays for device numbers on an emulated relay expander enabled on AlarmDecoder that can be changed by Smartthings",
                required: false, defaultValue: false)    
     }
-    section (name: "Automations", title: "Child Device Automations")
-    {
-            app(name: "VZCAutomations", appName: "VirtualZoneControlApp", namespace: "alarmdecoder", title: "New Zone Control Automation (Ademco Only)", multiple: true)
-            paragraph("Note: Set the create child control or sensor device settings above first and save, then go to the AlarmDecoder SmartApp settings to add automations.")
-}
-    section("FunctionKeys") {
-        input("panic1_label", "string", title: "Panic/Function Key #1 Label", description: "Label for special function key #1", defaultValue: "FIRE")
-        input("panic2_label", "string", title: "Panic/Function Key #2 Label", description: "Label for special function key #2", defaultValue: "POLICE")
-        input("panic3_label", "string", title: "Panic/Function Key #3 Label", description: "Label for special function key #3", defaultValue: "MEDICAL")
-        input("panic4_label", "string", title: "Panic/Function Key #4 Label", description: "Label for special function key #4", defaultValue: "PROG/STAY")        
-   
-     }
+    section(title: "Smart Home Monitor Settings") {
+           input(name: "shmIntegration", type: "bool", required: false, defaultValue: true, title: "Integrate with Smart Home Monitor?")
+           input(name: "shmChangeSHMStatus", type: "bool", required: false, defaultValue: true, title: "Automatically change Smart Home Monitor status when armed or disarmed?")
+           input(name: "defaultSensorToClosed", type: "bool", required: false, defaultValue: true, title: "Default Zone Sensors to closed?")
+      }
+      section (name: "Audio Notifications", title: "Select a device or Audio Notifications of Panel and Zone Events" ) {
+            input("audioDevices", "capability.audioNotification", title: "Select Audio Notification Devices for Audio Notifications", multiple: true, required: false )
+            input("musicPlayers", "capability.musicPlayer", title: "Select Music Player Devices for Audio Notifications", multiple: true, required: false )
+            input("volume", title: "Set volume for playback of notifications", range: "0..100", multiple: false, required: false)
+       }
+       section("Keypad Special Function Keys") {
+            input("panic1_label", "string", title: "Panic/Function Key #1 Label", description: "Label for special function key #1", defaultValue: "FIRE")
+            input("panic2_label", "string", title: "Panic/Function Key #2 Label", description: "Label for special function key #2", defaultValue: "POLICE")
+            input("panic3_label", "string", title: "Panic/Function Key #3 Label", description: "Label for special function key #3", defaultValue: "MEDICAL")
+            input("panic4_label", "string", title: "Panic/Function Key #4 Label", description: "Label for special function key #4", defaultValue: "PROG/STAY")        
+        }
 
 } // prefs
 
 metadata {  
-    // Important that Alarm Decoder have a space between words or the automation SmartApps wont be able to find the 
-    // Alarm Decoder devices when trying to link alarmdecoder/zones to smartthings devices - cjanick
-    //
     definition (name:        "Alarm Decoder Network Appliance", 
                 namespace:   "alarmdecoder", 
                 description: "Alarm Decoder Network Appliance Device Handler",
@@ -126,6 +129,7 @@ metadata {
         attribute "relayClosedStatus4", "number"
         attribute "relayClosedStatus5", "number"
         attribute "relayClosedStatus6", "number"
+        attribute "keypadURL", "string"
         
         // CJ MODS
         // attribute "smoke",       "enum", ["clear", "detected", "tested"]            // defined with smokeDetector Capability, use panel_fire_detected to populate
@@ -180,16 +184,18 @@ metadata {
         command "show_config_cmd"
         command "set_access_token"
         command "help_cmd"
-        command "key1_panic1"   // Special Function Key #1
+        command "key1_panic1"   // Special Function Key #1 - Fire
         command "key1_panic2"   // 
         command "send_fkey_1"   // 
-        command "key2_panic1"   // Special Function Key #2
+        command "key2_panic1"   // Special Function Key #2 - Police/Silent
         command "key2_panic2"   // 
-        command "send_fkey_2"   //        
-        command "panic2"   // Fire
-        command "panic3"   // Medical
-        command "panic4"   // Other
-        
+        command "send_fkey_2"   //    
+        command "key3_panic1"   // Special Function Key #2 - Medical
+        command "key3_panic2"   // 
+        command "send_fkey_3"   //   
+        command "key4_panic1"   // Special Function Key #2 - Custom/Arm Stay
+        command "key4_panic2"   // 
+        command "send_fkey_4"   //          
     }
 
     simulator {
@@ -292,7 +298,7 @@ metadata {
             state "on",         action: "check_panel_status",   nextState: "off",   icon: "st.secondary.test",   backgroundColor: "#e86d13" // icon: "st.custom.sonos.unmuted",
             state "off",        action: "check_panel_status",   nextState: "on",  icon: "st.secondary.test",   backgroundColor: "#ffffff" // icon: "st.custom.sonos.muted", 
         } 
-        standardTile("status_tile", "device.readyTile", inactiveLabel: false, decoration: "flat",width: 2, height: 1) { // icon: "st.secondary.test", // "#e86d13" 
+        standardTile("status_tile", "device.readyTileLabel", inactiveLabel: false, decoration: "flat",width: 2, height: 1) { // icon: "st.secondary.test", // "#e86d13" 
             state "on",         action: "check_panel_status",   label: '${currentValue}', nextState: "off",    backgroundColor: "#ffffff"  // icon: "st.custom.sonos.unmuted",
             state "off",        action: "check_panel_status",   label: '${currentValue}', nextState: "on",     backgroundColor: "#ffffff" // icon: "st.custom.sonos.muted", 
         } 
@@ -314,27 +320,27 @@ metadata {
         // There is only one panic button in the prior version of the service mgr linked to device.panic_state
         //
         standardTile("panic1", "device.panic1TileLabel", inactiveLabel: false, width: 2, height: 2, canChangeIcon: true ) {
-            state "default", icon: "st.Home.home5",                label: '${currentValue}', nextState: "panic1",  action: "key1_panic1"
-            state "panic1",  icon: "st.Health & Wellness.health9", label: '${currentValue}', nextState: "panic2",  action: "key1_panic2",  backgroundColor: "#ffa81e"
-            state "panic2",  icon: "st.Health & Wellness.health9", label: '${currentValue}', nextState: "default", action: "send_fkey_1",  backgroundColor: "#ff4000"
+            state "default", icon: "st.Seasonal Winter.seasonal-winter-009", label: '${currentValue}', nextState: "panic1",  action: "key1_panic1"
+            state "panic1",  icon: "st.Seasonal Winter.seasonal-winter-009", label: '${currentValue}', nextState: "panic2",  action: "key1_panic2",  backgroundColor: "#ffa81e"
+            state "panic2",  icon: "st.Seasonal Winter.seasonal-winter-009", label: '${currentValue}', nextState: "default", action: "send_fkey_1",  backgroundColor: "#ff4000"
         }
         // Must press 3x to do alarm.both command
         standardTile("panic2", "device.panic2TileLabel", inactiveLabel: false, width: 2, height: 2, canChangeIcon: true) {
-            state "default", icon: "st.home.home6",                label: '${currentValue}', nextState: "panic1",  action: "key2_panic1"
-            state "panic1",  icon: "st.Health & Wellness.health9", label: '${currentValue}', nextState: "panic2",  action: "key2_panic2", backgroundColor: "#ffa81e"
-            state "panic2",  icon: "st.Health & Wellness.health9", label: '${currentValue}', nextState: "default", action: "send_fkey_2", backgroundColor: "#ff4000"
+            state "default", icon: "st.People.people1", label: '${currentValue}', nextState: "panic1",  action: "key2_panic1"
+            state "panic1",  icon: "st.People.people1", label: '${currentValue}', nextState: "panic2",  action: "key2_panic2", backgroundColor: "#ffa81e"
+            state "panic2",  icon: "st.People.people1", label: '${currentValue}', nextState: "default", action: "send_fkey_2", backgroundColor: "#ff4000"
         }
         // Must press twice to do alarm.both command
         standardTile("panic3", "device.panic3TileLabel", inactiveLabel: false, width: 2, height: 2) {
-            state "default", icon: "st.People.people3",            label: "PANIC", nextState: "panic1", action: "panic1"
-            state "panic1",  icon: "st.Health & Wellness.health9", label: "PANIC", nextState: "panic2", action: "panic2",      backgroundColor: "#ffa81e"
-            state "panic2",  icon: "st.Health & Wellness.health9", label: "PANIC", nextState: "default", action: "alarm.both", backgroundColor: "#ff4000"          
+            state "default", icon: "st.Health & Wellness.health9", label: '${currentValue}', nextState: "panic1", action: "key3_panic1"
+            state "panic1",  icon: "st.Health & Wellness.health9", label: '${currentValue}', nextState: "panic2", action: "key3_panic1",  backgroundColor: "#ffa81e"
+            state "panic2",  icon: "st.Health & Wellness.health9", label: '${currentValue}', nextState: "default", action: "send_fkey_3", backgroundColor: "#ff4000"          
         } 
         // Must press twice to do alarm.both command
         standardTile("panic4", "device.panic4TileLabel", inactiveLabel: false, width: 2, height: 2) {
-            state "default", icon:"st.People.people3",            label: "PANIC", nextState: "panic1", action: "panic1"
-            state "panic1", icon: "st.Health & Wellness.health9", label: "PANIC", nextState: "panic2", action: "panic2",      backgroundColor: "#ffa81e"
-            state "panic2", icon: "st.Health & Wellness.health9", label: "PANIC", nextState: "default", action: "alarm.both", backgroundColor: "#ff4000"          
+            state "default", icon: "st.Home.home4", label: '${currentValue}', nextState: "panic1", action: "key4_panic1"
+            state "panic1",  icon: "st.Home.home4", label: '${currentValue}', nextState: "panic2", action: "key4_panic1",  backgroundColor: "#ffa81e"
+            state "panic2",  icon: "st.Home.home4", label: '${currentValue}', nextState: "default", action: "send_fkey_4", backgroundColor: "#ff4000"          
         } 
         standardTile("refresh", "device.refresh", inactiveLabel: false, decoration: "flat", width: 2, height: 1) {
             state "default", action:"refresh.refresh", label: "Refresh", icon:"st.secondary.refresh"
@@ -560,8 +566,7 @@ metadata {
             ]
         }
         
-      //  htmlTile(name: "keypad", attribute: "keypad", type: "HTML", whitelist: ["www.google.com"] , url: '${currentValue}', width: 3, height: 2)
-        htmlTile(name: "keypad", attribute: "keypad", type: "HTML", whitelist: ["www.google.com"] , url: "www.google.com", width: 6, height: 6)
+       // htmlTile(name: "keypad", attribute: "keypadUrl", type: "HTML", whitelist: ["192.168.1.116"] , url: '${currentValue}', width: 6, height: 6)
 
         main(["status"] )
         details(["status", 
@@ -577,13 +582,12 @@ metadata {
                  "relayClosedStatus1","relayClosedStatus2", "relayClosedStatus3", "relayClosedStatus4","relayClosedStatus5", "relayClosedStatus6",
                  "special_message_tile","panic1",
                  "panic2", "panic3", "panic4",
-                 "config_tile", "update_devices_tile", "big_refresh",
-                 "keypad"
+                 "config_tile", "update_devices_tile", "big_refresh"
                  ])
     }
 }
 
-/*** Handlers ***/
+/*** Standard Device Callbacks ***/
 
 
 def initialize() {
@@ -610,9 +614,13 @@ def initialize() {
           sendEvent(name: "readyTileLabel",  value: "Ready/Status")
           
     // Set default labels for Panic buttons
-    sendEvent(name: "panic1TileLabel", value: "FIRE")         
+    // Key A/1 - Fire (Ademco Zone 95)
+    sendEvent(name: "panic1TileLabel", value: "FIRE") 
+    // Key B/2 - Police/Silent (Ademco Zone 99)
     sendEvent(name: "panic2TileLabel", value: "POLICE")
+    // Key C/3 - Medical Fire (Ademco Zone 95)
     sendEvent(name: "panic3TileLabel", value: "MEDICAL")
+    // Key D/4
     if(settings.panel_type=="ADEMCO")
     	sendEvent(name: "panic4TileLabel", value: "CUSTOM")
     else
@@ -631,6 +639,11 @@ def initialize() {
         sendEvent(name: "panic3TileLabel", value: settings.panic3_label)
     if(settings.panic4_label!=null)
         sendEvent(name: "panic4TileLabel", value: settings.panic4_label)
+        
+    if(settings.keypadUrl!=null)
+        sendEvent(name: "keypadUrl", value: settings.keypadUrl ) 
+        
+    log.debug("--- handler.initialize END")
 }
 
 
@@ -656,6 +669,8 @@ def installed() {
     
     // Dont update child devices until settings are updated
     state.updateDevices=false
+    
+    log.debug("--- handler.installed END")
 }
 
 def configure() {
@@ -686,6 +701,22 @@ def updated() {
     // gets the AlarmDecoder config info then the zone lists and relay lists
     // will then update the child devices depending on settings.
     sendHubCommand( get_ad_config() )
+    
+    // Test here
+    /***
+    try {
+    def d = addChildDevice(
+                "alarmdecoder",
+				"VirtualZoneSensor",
+				"${state.ip}:${state.port}:1",
+				null, // hubid
+				[completedSetup: true, isComponent: false, label: "ZoneControl Test Component", componentName: "ZoneComponent1", componentLabel: "ZoneComponent1"]
+                )
+                    // log "add child d=${d.deviceLabel}"
+     } catch(Exception e) {
+            log "add child error=${e.message}"
+     }
+     ***/
     
 } // updated
 
@@ -1097,37 +1128,71 @@ def send_fkey_2() {
     return send_keys(keys)
 }
 
-def panic() {
-    log.trace("--- panic")
+// FUNCTION KEY #3 Commands/Functions
 
-    sendEvent(name: "keypadMsg",  value: "Sending...", isStateChange: true, displayed: false )
-    
-    def keys = "<S2>"
+def key3_panic1() {
+    def label = device.currentValue("panic3TileLabel")
+    state.key3_panic_started = new Date().time
+    sendEvent(name: "functionMsg", value: "Press ${label} again to proceed.")
+    log.trace("Special Function Key #3 - Panic stage 1")
+    runIn(10, checkPanic3 ) 
+}
+
+def key3_panic2() {
+    def label = device.currentValue("panic3TileLabel")
+    state.key3_panic_started = new Date().time
+    sendEvent(name: "functionMsg", value: "Press ${label} one more time to send the function key.")
+    log.trace("Special Function Key #3 - Panic stage 2")
+    runIn(10, checkPanic3 ) 
+}
+def checkPanic3() {
+    log.trace("checkPanic3");
+    if (state.key3_panic_started != null && new Date().time - state.key3_panic_started >= 10) {
+        sendEvent(name: "functionMsg", value: "Press Special Function Keys 3 times to activate, or wait for them to clear.")
+        log.trace("clearing panic for Special Function Key #3");
+    }
+}
+def send_fkey_3() {
+    log.trace("--- PANIC send_fkey_3...")
+    def label = device.currentValue("panic3TileLabel")
+    sendEvent(name: "keypadMsg",    value: "Sending Function Key 3 - ${label}", isStateChange: true, displayed: false )
+    sendEvent(name: "functionMsg",  value: "Sending Function Key 3 - ${label}", isStateChange: true, displayed: false )
+    def keys = "<S3>"
     return send_keys(keys)
 }
 
-def panic1() {
-    state.panic_started = new Date().time
 
-    runIn(10, checkPanic);
+// FUNCTION KEY #4 Commands/Functions
 
-    log.trace("Panic stage 1: ${state.panic_started}")
+def key4_panic1() {
+    def label = device.currentValue("panic2TileLabel")
+    state.key4_panic_started = new Date().time
+    sendEvent(name: "functionMsg", value: "Press ${label} again to proceed.")
+    log.trace("Special Function Key #4 - Panic stage 1")
+    runIn(10, checkPanic4 ) 
 }
 
-def panic2() {
-    state.panic_started = new Date().time
-
-    runIn(10, checkPanic);
-
-    log.trace("Panic stage 2: ${state.panic_started}")
+def key4_panic2() {
+    def label = device.currentValue("panic2TileLabel")
+    state.key4_panic_started = new Date().time
+    sendEvent(name: "functionMsg", value: "Press ${label} one more time to send the function key.")
+    log.trace("Special Function Key #4 - Panic stage 2")
+    runIn(10, checkPanic4 ) 
 }
-
-def checkPanic() {
-    log.trace("checkPanic");
-    if (state.panic_started != null && new Date().time - state.panic_started >= 10) {
-        sendEvent(name: "panic_state", value: "default", isStateChange: true);
-        log.trace("clearing panic");
+def checkPanic4() {
+    log.trace("checkPanic4");
+    if (state.key4_panic_started != null && new Date().time - state.key3_panic_started >= 10) {
+        sendEvent(name: "functionMsg", value: "Press Special Function Keys 3 times to activate, or wait for them to clear.")
+        log.trace("clearing panic for Special Function Key #4");
     }
+}
+def send_fkey_4() {
+    log.trace("--- PANIC send_fkey_4...")
+    def label = device.currentValue("panic4TileLabel")
+    sendEvent(name: "keypadMsg",    value: "Sending Function Key 4 - ${label}", isStateChange: true, displayed: false )
+    sendEvent(name: "functionMsg",  value: "Sending Function Key 4 - ${label}", isStateChange: true, displayed: false )
+    def keys = "<S4>"
+    return send_keys(keys)
 }
 
 
@@ -1798,9 +1863,13 @@ def update_relay_devices() {
 private def parseEventMessage(String description) {
     def event = [:]
     def parts = description.split(',')
-
+    log.trace "handler parseEventMessage, parts=${parts}" 
+    
     parts.each { part ->
         part = part.trim()
+        log.trace "handler parseEventMessage, part=${part}" 
+        if (part==null)
+           return
         if (part.startsWith('devicetype:')) {
             def valueString = part.split(":")[1].trim()
             event.devicetype = valueString
