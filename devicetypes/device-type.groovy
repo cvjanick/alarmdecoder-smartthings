@@ -1990,9 +1990,6 @@ def get_zone_list() {
     def urn    = getDataValue("urn")
     def host   = urn.substring(0, urn.indexOf(":"))
     def apikey = _get_api_key()
-    
-    def request = http_hub_post(host, , body)
-    
 
     return hub_http_get(urn, "/api/v1/zones?apikey=${apikey}")
   }
