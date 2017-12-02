@@ -216,6 +216,9 @@ def discover_devices() {
             //TODO: REMOVE THIS? YEP
             href(name: "refreshDevices", title: "Refresh", required: false, page: "discover_alarmdecoder")
         }
+        section("General Settings & Automations (All Devices)") {
+            href( name: "settings", title: "Update Settings and Automations", description: "Tap to Show Settings...", page: "settings_page" )
+        }
     }
 }
 
@@ -265,7 +268,8 @@ def generateAccessToken() {
     try{
        state.access_token = createAccessToken()
     } catch (Exception e) {
-      log.error "--manager ERROR creating access token! error=${e.code}, ${e.message}"
+      log.error "--manager ERROR creating access token! error=${e.message}"
+      Notify("AlarmDecoder Error: Make sure that OAuth is enabled in the Service Manager SmartApp in the IDE, App Settings, OAuth, Enable OAuth!")
     }
     state.endpoint_url = apiServerUrl() // "https://graph.api.smartthings.com/api/smartapps/installations/${app.id}"
     log.debug "generateAccessToken token=${state.access_token}, url=${state.endpoint_url}"
@@ -348,7 +352,7 @@ def installed() {
     initialize()
     
     log.trace "--manager generateAccessToken()"
-    generateAccessToken()
+    //generateAccessToken()
     
     log.trace "--manager installed END"
 }
@@ -1421,3 +1425,4 @@ private String convertHexToIP(hex) {
 private Integer convertHexToInt(hex) {
     Integer.parseInt(hex,16)
 }
+
