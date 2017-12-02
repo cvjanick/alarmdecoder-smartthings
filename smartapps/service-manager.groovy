@@ -39,21 +39,25 @@ definition(
 
 preferences {
 
-    page(name: "main_page", title: "AlarmDecoder Service Manager Setup", content: "main_page", install: true, uninstall: true) 
-    
+    //page(name: "main_page", title: "AlarmDecoder Service Manager Setup", content: "main_page", install: true, uninstall: true) 
+    /***
     page(name: "main", title: "AlarmDecoder Service Manager Setup", install: true, uninstall: true) {
         section("AlarmDecoders") {
             //href( name: "discover", title: "Find and Select/Install Alarm Decoders", required:false, page: "discover_devices", 
             //                        description: "Tap to Find or Select AlarmDecoder(s)" )
             href(name: "discover", title: "Discover", required: false, page: "discover_devices", description: "Tap to discover")
+            //href( name: "devices", title: "Find and Select Alarm Decoders to Install", label: "Tap to Find & Select AlarmDecoder(s)", page: "discover_devices" )
         }
+        
         section("General Settings & Automations (All Devices)") {
             href( name: "settings", title: "Update Settings and Automations", description: "Tap to Show Settings...", page: "settings_page" )
         }
         section("Help") {
             href( name: "help", title: "Help with Installation/Setup", label: "Tap for Help Content", page: "help_page" )
         }
-      }            
+        
+      }  
+      ***/
     page(name: "discover_devices", title: "Discovery started..", content: "discover_devices", refreshTimeout: 5)
     page(name: "stauth_page",        title: "Smartthings Authorization Token", description: "Tap to view or update access token")
     page(name: "stauth_update_page", title: "Smartthings Authorization Token")  
@@ -163,7 +167,8 @@ def main_page() {
             paragraph "${names}"
         }
         section("AlarmDecoders") {
-            href( name: "devices", title: "Find and Select Alarm Decoders to Install", label: "Tap to Find & Select AlarmDecoder(s)", page: "discover_devices" )
+            href(name: "discover", title: "Discover", required: false, page: "discover_devices", description: "Tap to discover")
+            //href( name: "devices", title: "Find and Select Alarm Decoders to Install", label: "Tap to Find & Select AlarmDecoder(s)", page: "discover_devices" )
         }
         section("General Settings & Automations (All Devices)") {
             href( name: "settings", title: "Update Settings and Automations", description: "Tap to Show Settings...", page: "settings_page" )
@@ -178,7 +183,7 @@ def main_page() {
 def discover_devices() {
   // Dynamic page for AlarmDecoder Device Discovery and Settings
          
-    int refreshInterval = 10
+    int refreshInterval = 5
        
     int refreshCount = !state.refreshCount ? 0 : state.refreshCount as int
     state.refreshCount = refreshCount += 1
@@ -194,20 +199,22 @@ def discover_devices() {
     
     log.debug "found_devices=${found_devices}"
 
+    /***
     if (!state.subscribed) {
         log.trace "discover_devices: subscribe to location"
-        subscribe(location, null, locationHandler, [filterEvents: false])
+        // subscribe(location, null, locationHandler, [filterEvents: false])
         state.subscribed = true
     }
+    ****/
 
     discover_alarmdecoder()
 
 
-    return dynamicPage(name: "discover_devices", title: "Setup", nextPage: "", refreshInterval: refreshInterval, install: false, uninstall: true ) {
+    return dynamicPage(name: "discover_devices", title: "Setup", nextPage: "", refreshInterval: refreshInterval, install: true, uninstall: true ) {
         section() {
             input "selectedDevices", "enum", required: false, title: "Select Device(s) to Install (${numFound} found)", multiple: true, options: found_devices
             //TODO: REMOVE THIS? YEP
-           //href(name: "refreshDevices", title: "Refresh", required: false, page: "discover_alarmdecoder")
+            href(name: "refreshDevices", title: "Refresh", required: false, page: "discover_alarmdecoder")
         }
     }
 }
@@ -245,14 +252,21 @@ def discover_alarmdecoder() {
 
     if (!state.subscribed) {
         log.trace "discover_alarmdecoder: subscribing!"
-        subscribe(location, null, locationHandler, [filterEvents: false])
+        //subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:ZonePlayer:1", ssdpHandler)
+        //subscribe(location, null, locationHandler, [filterEvents: false])
+        subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:AlarmDecoder:1", locationHandler)
+        //subscribe(location, "ssdpTerm", locationHandler)
         state.subscribed = true
     }
     sendHubCommand(new physicalgraph.device.HubAction("lan discovery urn:schemas-upnp-org:device:AlarmDecoder:1", physicalgraph.device.Protocol.LAN))
 }
 
 def generateAccessToken() {
-    state.access_token = createAccessToken()
+    try{
+       state.access_token = createAccessToken()
+    } catch (Exception e) {
+      log.error "--manager ERROR creating access token! error=${e.code}, ${e.message}"
+    }
     state.endpoint_url = apiServerUrl() // "https://graph.api.smartthings.com/api/smartapps/installations/${app.id}"
     log.debug "generateAccessToken token=${state.access_token}, url=${state.endpoint_url}"
     def dni = "${state.ip}:${state.port}"
@@ -463,13 +477,53 @@ def updateDevicesWebService() {
 
 /**** Handlers ****/
 
-def locationHandler(evt) {
-    // Add devices returned by discover_alarmdecoder, update based on location events
-
+def ssdpHandler(evt) {
     def description = evt.description
     def hub = evt?.hubId
 
-    log.trace "locationHandler: description=${description}"
+    def parsedEvent = parseEventMessage(description)
+    parsedEvent << ["hub":hub]
+
+    def devices = getDevices()
+    String ssdpUSN = parsedEvent.ssdpUSN.toString()
+    if (devices."${ssdpUSN}") {
+        def d = devices."${ssdpUSN}"
+        if (d.ip != parsedEvent.ip || d.port != parsedEvent.port) {
+            d.ip = parsedEvent.ip
+            d.port = parsedEvent.port
+            def child = getChildDevice(parsedEvent.mac)
+            if (child) {
+                child.sync(parsedEvent.ip, parsedEvent.port)
+            }
+        }
+    } else {
+        devices << ["${ssdpUSN}": parsedEvent]
+    }
+}
+
+def locationHandler(evt) {
+    // Add devices returned by discover_alarmdecoder, update based on location events
+    
+    def description = evt.description
+    def hub = evt?.hubId
+    def name = evt.name
+    def value= evt.value
+    log.trace "locationHandler: name=${name}, value=${value} description=${description}"
+    
+    // Only process events we care about...
+    if( name!="ssdpTerm" )
+      return
+    
+    // hubUpdated has null value, description
+    if( description==null)
+      return
+
+    // problem with DNI updated getting through as an event, latest hub update
+    if( description.endsWith("updated") ) {
+      log.debug "--manager locationHandler description.endsWith UPDATED"
+      return
+    }
+    log.debug "--manager locationHandler after RETURN"
 
     // Getting dni updated event description...
     def parsedEvent = parseEventMessage(description)
@@ -698,7 +752,7 @@ def refresh_alarmdecoders() {
     log.trace("refresh_alarmdecoders-")
     getAllChildDevices().each { device ->
         // Only refresh the main device.
-        if (!device.deviceNetworkId.contains(":switch"))
+        if (!device.deviceNetworkId.contains(":switch") && !device.deviceNetworkId.contains(":relay") && !device.deviceNetworkId.contains(":keypad") )
         {
             log.trace("refresh_alarmdecoders: ${device}")
             device.refresh()
@@ -716,6 +770,11 @@ def findAlarmDecoder(dni) {
     def ad  = getChildDevice("${dni}")
     return ad
 } 
+
+def getAlarmDecoder() {
+  def ad = state.alarmdecoder
+  return ad
+}
 
 def getZoneControlDeviceCount() {
     def cnt=findDeviceTypeCount("VirtualZoneControl")
@@ -783,6 +842,9 @@ def addAlarmDecoderDevices() {
                 state.urn = urn
                 log.debug"addAlarmDecoderDevices, state.urn=${state.urn}"     
                 
+                // might be different if we go to state.mac
+                dni = "${state.ip}" + ":" + "${state.port}"
+                
                 // Generate a unique label in case there is more than one to 
                 /**
                 def child_cnt = 0
@@ -801,12 +863,13 @@ def addAlarmDecoderDevices() {
                 try{
                      d = addChildDevice("alarmdecoder", 
                                         "Alarm Decoder Network Appliance", 
-                                        "${state.ip}:${state.port}", 
+                                        dni, 
                                         newDevice?.value.hub, 
-                                        [name: "${state.ip}:${state.port}", 
+                                        [name:  dni, 
                                          label: ad_label, 
                                          completedSetup: true, 
-                                         data:[urn: state.urn, mac: state.mac, access_token: state.access_token, endpoint_url: state.endpoint_url]
+                                         data:[urn: state.urn, mac: state.mac, dni: dni, ip: state.ip, port: state.port, 
+                                               access_token: state.access_token, endpoint_url: state.endpoint_url]
                                         ])
                     } catch(e) {
                          Alert("Error adding AlarmDecoder Device! Error: ${e}")
@@ -1267,21 +1330,22 @@ def uninstallRelaySensorDevices(dni, relay_list) {
 
 
 private def parseEventMessage(String description) {
-    //log.trace "parseEventMessage"
-    log.trace "manager parseEventMessage, description=${description}"
+    log.trace "parseEventMessage"
+    // log.trace "manager parseEventMessage, description=${description}"
     def event = [:]
     def parts = description.split(',')
     
     log.trace "manager parseEventMessage, parts=${parts}"    
     // Now getting "C0A80110:1388 updated" events so..
-    if(parts==null)
+    if(parts==null) 
       return
-    
+
     parts.each { part ->
         part = part.trim()
         log.trace "manager parseEventMessage, part=${part}" 
-        if (part==null)
+        if (part==null) 
             return
+            
         if (part.startsWith('devicetype:')) {
             def valueString = part.split(":")[1].trim()
             event.devicetype = valueString
@@ -1342,7 +1406,11 @@ private def parseEventMessage(String description) {
     }
 
     log.trace("manager event=${event}")
-    event
+    if(event==[:])
+      return
+      
+    if(event)
+      event
 }
 
 
