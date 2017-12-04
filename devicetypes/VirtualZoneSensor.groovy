@@ -3,7 +3,7 @@
 // cjanick updates: added attributes for zoneID, zoneName, ZoneDescription
 
 metadata {
-    definition (name: "VirtualZoneSensor", namespace: "alarmdecoder", author: "scott@nutech.com") {
+    definition (name: "Virtual Zone Sensor", namespace: "alarmdecoder", author: "scott@nutech.com") {
         capability "Contact Sensor"
         capability "Refresh"
     }
@@ -41,4 +41,3 @@ metadata {
 def refresh() {
    parent.refresh()
    }
-   
