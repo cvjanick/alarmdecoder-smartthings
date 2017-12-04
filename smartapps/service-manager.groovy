@@ -1,4 +1,4 @@
-/**
+/*
  *  AlarmDecoder Service Manager
  *
  *  Copyright 2016 Nu Tech Software Solutions, Inc.
@@ -199,14 +199,6 @@ def discover_devices() {
     
     log.debug "found_devices=${found_devices}"
 
-    /***
-    if (!state.subscribed) {
-        log.trace "discover_devices: subscribe to location"
-        // subscribe(location, null, locationHandler, [filterEvents: false])
-        state.subscribed = true
-    }
-    ****/
-
     discover_alarmdecoder()
 
 
@@ -256,8 +248,8 @@ def discover_alarmdecoder() {
     if (!state.subscribed) {
         log.trace "discover_alarmdecoder: subscribing!"
         //subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:ZonePlayer:1", ssdpHandler)
-        //subscribe(location, null, locationHandler, [filterEvents: false])
-        subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:AlarmDecoder:1", locationHandler)
+        subscribe(location, null, locationHandler, [filterEvents: false])
+        //subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:AlarmDecoder:1", locationHandler)
         //subscribe(location, "ssdpTerm", locationHandler)
         state.subscribed = true
     }
@@ -265,13 +257,19 @@ def discover_alarmdecoder() {
 }
 
 def generateAccessToken() {
+    if (state.access_token==null)
+      state.access_token="unknown"
+    if (state.endpoint_url==null)
+      state.endpoint_url="unknown"
+      
     try{
        state.access_token = createAccessToken()
     } catch (Exception e) {
       log.error "--manager ERROR creating access token! error=${e.message}"
-      Notify("AlarmDecoder Error: Make sure that OAuth is enabled in the Service Manager SmartApp in the IDE, App Settings, OAuth, Enable OAuth!")
+      Notify("AlarmDecoder Error: Make sure that OAuth is enabled in the Service Manager SmartApp in the IDE, App Settings, OAuth, Enable OAuth, Update!")
     }
-    state.endpoint_url = apiServerUrl() // "https://graph.api.smartthings.com/api/smartapps/installations/${app.id}"
+    // Note: apiServerUrl must have an argument
+    state.endpoint_url = apiServerUrl("") // "https://graph.api.smartthings.com/api/smartapps/installations/${app.id}"
     log.debug "generateAccessToken token=${state.access_token}, url=${state.endpoint_url}"
     def dni = "${state.ip}:${state.port}"
     def ad  = getChildDevice("${state.ip}:${state.port}")
@@ -329,7 +327,8 @@ def initialize() {
     state.subscribed = false
     state.lastSHMStatus = null
     state.lastAlarmDecoderStatus = null
-
+    state.alarmdecoders=[]
+    
     subscribe(location, "alarmSystemStatus", shmAlarmHandler)
 
     unschedule()
@@ -380,16 +379,16 @@ def childUninstalled() {
 }
 
 def old_uninstall() {
-    def devices = getChildDevices()
+    def devices = getAllChildDevices()
 
     devices.each {
         try {
-            log.trace "deleting child device: ${it.deviceNetworkId}"
+            log.trace "-- manager deleting child device: ${it.deviceNetworkId}"
             deleteChildDevice(it.deviceNetworkId)
         }
         catch(Exception e) {
             log.trace("exception while uninstalling: ${e}")
-            Notify("Error deleting child device ${it.displayName}, make sure to remove all SmartApp Automations from this Device in the Device Settings and try again.")
+            Notify("Error deleting child device ${it.displayName}, make sure to remove all SmartApp Automations from this Device in the Device Settings and try again. Error: ${e.message}")
         }
     }
     
@@ -502,6 +501,25 @@ def ssdpHandler(evt) {
         }
     } else {
         devices << ["${ssdpUSN}": parsedEvent]
+    }
+}
+
+void verifyDevices() {
+    def devices = getDevices().findAll { it?.value?.verified != true }
+    devices.each {
+        int port = convertHexToInt(it.value.port)
+        String ip = convertHexToIP(it.value.ip)
+        String host = "${ip}:${port}"
+        sendHubCommand(new physicalgraph.device.HubAction("""GET ${it.value.ssdpPath} HTTP/1.1\r\nHOST: $host\r\n\r\n""", physicalgraph.device.Protocol.LAN, host, [callback: deviceDescriptionHandler]))
+    }
+}
+
+void deviceDescriptionHandler(physicalgraph.device.HubResponse hubResponse) {
+    def body = hubResponse.xml
+    def devices = getDevices()
+    def device = devices.find { it?.key?.contains(body?.device?.UDN?.text()) }
+    if (device) {
+        device.value << [name: body?.device?.roomName?.text(), model: body?.device?.modelName?.text(), serialNumber: body?.device?.serialNum?.text(), verified: true]
     }
 }
 
@@ -847,7 +865,7 @@ def addAlarmDecoderDevices() {
                 log.debug"addAlarmDecoderDevices, state.urn=${state.urn}"     
                 
                 // might be different if we go to state.mac
-                dni = "${state.ip}" + ":" + "${state.port}"
+                def ad_dni = "${state.ip}" + ":" + "${state.port}"
                 
                 // Generate a unique label in case there is more than one to 
                 /**
@@ -867,20 +885,19 @@ def addAlarmDecoderDevices() {
                 try{
                      d = addChildDevice("alarmdecoder", 
                                         "Alarm Decoder Network Appliance", 
-                                        dni, 
+                                        urn, 
                                         newDevice?.value.hub, 
-                                        [name:  dni, 
+                                        [name:  urn, 
                                          label: ad_label, 
                                          completedSetup: true, 
-                                         data:[urn: state.urn, mac: state.mac, dni: dni, ip: state.ip, port: state.port, 
+                                         data:[urn: state.urn, mac: state.mac, dni: ad_dni, ip: state.ip, port: state.port, 
                                                access_token: state.access_token, endpoint_url: state.endpoint_url]
                                         ])
                     } catch(e) {
                          Alert("Error adding AlarmDecoder Device! Error: ${e}")
-                         }
-                
-                subscribe(d, "alarmStatus",       alarmdecoderAlarmHandler, [filterEvents: false])
-
+                    }
+                    
+                subscribe(d, "alarmStatus",       alarmdecoderAlarmHandler, [filterEvents: false])            
             } // if 
         } // if !d
     }  // each
@@ -1425,4 +1442,3 @@ private String convertHexToIP(hex) {
 private Integer convertHexToInt(hex) {
     Integer.parseInt(hex,16)
 }
-
