@@ -7,7 +7,9 @@
 import groovy.json.JsonSlurper;
 
 metadata {
-    definition (name: "VirtualZoneControl", namespace: "alarmdecoder", author: "cvjanick") {
+    // Note: Do not change name if possible or automations and device management functions in the main device handler may not function without
+    // being modified also.
+    definition (name: "Virtual Zone Control", namespace: "alarmdecoder", author: "cvjanick") {
         capability "Door Control"
         capability "Contact Sensor"
         capability "Refresh"
@@ -31,7 +33,13 @@ metadata {
     // tile definitions
     // Was a contact sensor previously where open meant faulted
     // Assuming normally closed devices, Here we will use open for faulted, closed for ready
-
+     /****
+            "st.unknown.unknown.unknown"
+            "st.unknown.zwave.device"
+            "st.unknown.zwave.remote-controller"
+            "st.unknown.zwave.sensor"
+            "st.unknown.zwave.static-controller"
+            *****/
     tiles (scale: 2)  {
            /******
             multiAttributeTile(name: "door", type: "generic", width: 6, height: 4 ) {
@@ -55,9 +63,9 @@ metadata {
         }
         standardTile("toggle_tile", "device.door",  width: 2, height: 2, canChangeIcon: true) {
             state "closed",  action: "toggle", label: "Closed",  icon: "st.contact.contact.closed",  backgroundColor: "#79b821", nextState: "opening"
-           # state "closing", action: "toggle", label: "Closing", icon: "st.contact.contact.closed",  backgroundColor: "#cccccc"
+            state "closing", action: "toggle", label: "Closing", icon: "st.contact.contact.closed",  backgroundColor: "#cccccc"
             state "open",    action: "toggle", label: "Open",    icon: "st.contact.contact.open",    backgroundColor: "#ff4000", nextState: "closing" // "#e86d13"
-           # state "opening", action: "toggle", label: "Opening", icon: "st.contact.contact.open",    backgroundColor: "#cccccc"
+            state "opening", action: "toggle", label: "Opening", icon: "st.contact.contact.open",    backgroundColor: "#cccccc"
             state "unknown",                   label: "Unknown", icon: "st.unknown.unknown.unknown", backgroundColor: "#cccccc"
         }
         standardTile("open", "device.door", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
@@ -88,7 +96,7 @@ metadata {
          
 }
 
-// Handlers
+// Standard Callback Handlers
 
 def installed() {
         log.trace("--VirtualZoneControl installed()")
@@ -127,8 +135,7 @@ def open() {
    def result = ad.send_keys("${keys}")
    log.trace("result=${result}")
 
-   //sendEvent(name: "delayed-refresh", value: 2 )
-   //sendEvent(name: "delayed-refresh", value: 4 )
+   parent.refresh()
    
    return result
 }
@@ -148,8 +155,7 @@ def close() {
    def result =  ad.send_keys("${keys}")
    log.trace("result=${result}")
 
-   sendEvent(name: "delayed-refresh", value: 2 )
-   sendEvent(name: "delayed-refresh", value: 4 )
+   parent.refresh()
    
    return result
 }
@@ -190,11 +196,16 @@ def refresh() {
 
 def find_alarm_decoder() {
    def ad  = null
-   def dni = getDataValue("ad_dni")
+   def ad_dni = getDataValue("ad_dni")
+   def devs = parent.getAllChildDevices()
+   log.trace "dnparent=${parent}, parent.getChildDevices()=${devs}"
+   
+   // Must be getAllChildDevices if SmartApp parent
    parent.getAllChildDevices().each { d ->
-       if(d.deviceNetworkId.equals(dni))
+       log.trace "d.deviceNetworkId=${d.deviceNetworkId}"
+       if(d.deviceNetworkId.equals(ad_dni))
           ad=d
-          }
+   }
    if(ad==null)
      log.error(" --VirtualZoneControl.find_alarm_decoder(): Can't find primary device!")
    return ad
