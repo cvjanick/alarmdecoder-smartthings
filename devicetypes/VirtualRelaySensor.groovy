@@ -3,7 +3,7 @@
 // cjanick updates: added attributes for relayAddress, relayChannel, relayValue
 
 metadata {
-    definition (name: "VirtualRelaySensor", namespace: "alarmdecoder", author: "cjanick") {
+    definition (name: "Virtual Relay Sensor", namespace: "alarmdecoder", author: "cjanick") {
         capability "Contact Sensor"
         capability "Refresh"
     }
@@ -42,4 +42,3 @@ metadata {
 def refresh() {
    parent.refresh()
    }
-   
