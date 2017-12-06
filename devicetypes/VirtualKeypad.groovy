@@ -27,7 +27,7 @@ preferences {
 } // prefs
 
 metadata {  
-    definition ( name:        "Alarm Decoder Keypad Layout", 
+    definition ( name:        "Alarm Decoder Keypad", 
                  namespace:   "alarmdecoder", 
                  description: "Alarm Decoder Network Appliance Device Handler",
                  author:      "Scott Petersen" ) 
